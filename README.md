@@ -14,6 +14,15 @@ Cliente → Controller → Service ─┬─ Redis (cache, leitura rápida)
   cache MISS, e então cacheia o resultado.
 - **Escrita** (`POST`/`PATCH`/`DELETE`): grava no Postgres e invalida o cache.
 
+## 🎬 Demonstração
+
+![Cache em ação: primeira leitura no PostgreSQL (lenta), segunda no Redis (instantânea)](src/assets/RedisTest.gif)
+
+Na primeira requisição o dado vem do PostgreSQL (cache MISS, ~18ms). Na segunda,
+vem direto do Redis (cache HIT, ~1ms) — uma boa redução no tempo de
+resposta. Ao atualizar o produto, o cache é invalidado e a próxima leitura volta
+a buscar no banco.
+
 ## 🛠️ Tecnologias
 - NestJS + TypeScript
 - PostgreSQL + Prisma ORM (v7)
