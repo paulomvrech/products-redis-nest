@@ -3,6 +3,7 @@ import {ConfigModule, ConfigService} from "@nestjs/config";
 import {CacheModule} from "@nestjs/cache-manager";
 import {createKeyv} from "@keyv/redis";
 import {PrismaModule} from "./prisma/prisma.module";
+import { ProductsModule } from './products/products.module';
 
 @Module({
     imports: [
@@ -19,7 +20,7 @@ import {PrismaModule} from "./prisma/prisma.module";
             }
         }),
         PrismaModule,
-
+        ProductsModule,
     ],
 })
 export class AppModule {
