@@ -1,0 +1,18 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Product {
+  id          String   @id @default(uuid())
+  name        String
+  description String? // "?" torma o campo opcional
+  price       Int // em centavos
+  createdAt   DateTime @default(now()) // preenchido automaticamente na criacao
+  updatedAt   DateTime @updatedAt // o Prima atualiza sozinho a cada update
+}
