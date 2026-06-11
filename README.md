@@ -1,98 +1,89 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# 🛍️ API de Produtos — NestJS + PostgreSQL + Prisma + Redis
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+API REST com persistência em PostgreSQL (via Prisma ORM 7) e camada de cache em
+Redis. Demonstra arquitetura em camadas, padrão cache-aside e invalidação de cache.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## 🏗️ Arquitetura
 
-## Description
-
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
-
-## Project setup
-
-```bash
-$ npm install
+```
+Cliente → Controller → Service ─┬─ Redis (cache, leitura rápida)
+                                └─ Prisma → PostgreSQL (fonte da verdade)
 ```
 
-## Compile and run the project
+- **Leitura** (`GET /products/:id`): tenta o Redis primeiro; só vai ao Postgres no
+  cache MISS, e então cacheia o resultado.
+- **Escrita** (`POST`/`PATCH`/`DELETE`): grava no Postgres e invalida o cache.
+
+## 🛠️ Tecnologias
+- NestJS + TypeScript
+- PostgreSQL + Prisma ORM (v7)
+- Redis (@nestjs/cache-manager + @keyv/redis)
+- Docker / Docker Compose
+
+## ✅ Pré-requisitos
+- Node.js 20 LTS+
+- Docker e Docker Compose
+
+## 🚀 Como rodar
 
 ```bash
-# development
-$ npm run start
+# 1. Sobe PostgreSQL + Redis
+docker compose up -d
 
-# watch mode
-$ npm run start:dev
+# 2. Instala dependências
+#    (--legacy-peer-deps resolve um conflito conhecido de peer dependency
+#     entre o keyv usado pelo ESLint e o exigido pelo @keyv/redis)
+npm install --legacy-peer-deps
 
-# production mode
-$ npm run start:prod
+# 3. Prisma — no Prisma 7 são DOIS comandos separados:
+npx prisma migrate dev --name init   # cria e aplica a migration (banco)
+npx prisma generate                   # gera o client em src/generated/prisma (código)
+
+# 4. Sobe a aplicação
+npm run start:dev
 ```
 
-## Run tests
+> **Observação (Prisma 7):** sempre que alterar o `prisma/schema.prisma` durante o
+> desenvolvimento, rode `npx prisma generate` novamente para o client refletir as
+> mudanças. O `migrate dev` não faz isso automaticamente nesta versão.
+
+## 🧪 Testando
 
 ```bash
-# unit tests
-$ npm run test
+# Criar um produto (price em centavos: 35000 = R$ 350,00)
+curl -X POST http://localhost:3000/products \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Teclado Mecânico","description":"RGB","price":35000,"stock":10}'
 
-# e2e tests
-$ npm run test:e2e
+# Ler duas vezes: 1ª = CACHE MISS (vai ao banco), 2ª = CACHE HIT (vem do Redis)
+curl http://localhost:3000/products/<id>
+curl http://localhost:3000/products/<id>
 
-# test coverage
-$ npm run test:cov
+# Atualizar (invalida o cache) e ler de novo (MISS com o dado novo)
+curl -X PATCH http://localhost:3000/products/<id> \
+  -H "Content-Type: application/json" -d '{"price":29900}'
+curl http://localhost:3000/products/<id>
 ```
 
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+Inspecionar as duas pontas:
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+# PostgreSQL (a fonte da verdade)
+docker exec -it postgres psql -U admin -d produtos -c 'SELECT id, name, price FROM "Product";'
+
+# Redis (o cache)
+docker exec -it redis redis-cli
+KEYS *
+TTL "<chave>"
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+Visualizar o banco em interface gráfica: `npx prisma studio`
 
-## Resources
+## 📌 Versões testadas
+- Prisma 7.8 · Node 20 · PostgreSQL 16 · Redis 7
 
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+## 📚 Conceitos demonstrados
+- ORM type-safe com Prisma e migrations versionadas
+- Cache-aside e invalidação de cache nas escritas
+- Arquitetura em camadas (controller → service → repository)
+- Ciclo de vida da conexão (OnModuleInit / OnModuleDestroy)
